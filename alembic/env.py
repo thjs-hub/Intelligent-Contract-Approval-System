@@ -1,4 +1,7 @@
-"""Alembic 环境配置 —— 从 app.core.config 读取数据库 URL，自动发现 ORM 模型。"""
+"""Alembic 环境配置 —— 从 app.core.config 读取数据库 URL，自动发现 ORM 模型。
+
+第二阶段更新: 导入 app.models 包以触发所有模型注册到 Base.metadata。
+"""
 
 from logging.config import fileConfig
 
@@ -7,6 +10,10 @@ from sqlalchemy import engine_from_config, pool
 
 from app.core.config import settings
 from app.models.base import Base
+
+# 关键: 导入所有模型模块以触发 Base.metadata 注册
+# 不导入则 Alembic 无法发现表结构
+import app.models  # noqa: F401, E402
 
 # Alembic Config 对象
 config = context.config
@@ -18,7 +25,7 @@ config.set_main_option("sqlalchemy.url", settings.DATABASE_URL)
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
-# 所有 ORM 模型的 metadata —— 需要在此导入所有模型模块以确保 metadata 完整
+# 所有 ORM 模型的 metadata
 target_metadata = Base.metadata
 
 
@@ -30,6 +37,7 @@ def run_migrations_offline() -> None:
         target_metadata=target_metadata,
         literal_binds=True,
         dialect_opts={"paramstyle": "named"},
+        compare_type=True,
     )
 
     with context.begin_transaction():
@@ -45,7 +53,11 @@ def run_migrations_online() -> None:
     )
 
     with connectable.connect() as connection:
-        context.configure(connection=connection, target_metadata=target_metadata)
+        context.configure(
+            connection=connection,
+            target_metadata=target_metadata,
+            compare_type=True,
+        )
 
         with context.begin_transaction():
             context.run_migrations()

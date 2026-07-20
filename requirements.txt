@@ -20,3 +20,32 @@ python-dotenv>=1.2.2
 
 # Cache
 redis>=8.0.1
+
+# ===== 第二阶段新增依赖 =====
+
+# 异步文件 IO（M02 附件下载使用）
+aiofiles>=24.1.0
+
+# DOCX 文档解析（M04）
+python-docx>=1.1.2
+
+# PDF 文档解析（M04，文本型 PDF）
+pdfplumber>=0.11.4
+
+# OCR 引擎（M05，二选一即可）
+# PaddleOCR 推荐，准确率较高
+# paddleocr>=2.7.0
+# paddlepaddle>=2.6.0
+
+# Tesseract 备选方案
+# pytesseract>=0.3.13
+
+# PyMuPDF — PDF 转图片（M05 OCR 用）
+PyMuPDF>=1.24.0
+
+# HTTP 客户端（用于审批系统适配器调用外部 API）
+httpx>=0.28.1
+
+# 测试
+pytest>=9.1.1
+pytest-asyncio>=0.24.0
