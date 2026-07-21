@@ -4,6 +4,7 @@
 新增模型时必须在此处添加导出，否则 Alembic 迁移不会包含对应表。
 """
 
+from app.models.ai_review_result import AIReviewResult
 from app.models.attachment import ApprovalAttachment
 from app.models.base import Base
 from app.models.comment_log import CommentLog
@@ -24,4 +25,5 @@ __all__ = [
     "ReviewResult",
     "CommentLog",
     "TaskLog",
+    "AIReviewResult",
 ]

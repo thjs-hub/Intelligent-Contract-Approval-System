@@ -61,6 +61,8 @@ class PaddleOCREngine(OCREngine):
 
     依赖:
       pip install paddleocr paddlepaddle
+
+    第三阶段增强: 通过组合 LayoutOCREngine 提供布局分析能力
     """
 
     def __init__(self) -> None:
@@ -73,6 +75,8 @@ class PaddleOCREngine(OCREngine):
             raise ImportError(
                 "PaddleOCR 未安装，请执行: pip install paddleocr paddlepaddle"
             ) from e
+        # 第三阶段: 布局分析引擎延迟初始化（首次调用 recognize_with_layout 时加载）
+        self._layout_engine = None
 
     def recognize(self, image_path: str) -> str:
         """对单张图片执行 OCR"""
@@ -98,6 +102,26 @@ class PaddleOCREngine(OCREngine):
             text = self.recognize(img_path)
             results.append((page_num + 1, text))
         return results
+
+    # ===== 第三阶段实现 — 布局分析 =====
+    def recognize_with_layout(self, image_path: str) -> dict:
+        """带布局分析的识别（识别段落、标题、表格区域）
+
+        通过组合 LayoutOCREngine 实现，PP-Structure 不可用时降级到 MockLayoutEngine
+        """
+        if self._layout_engine is None:
+            from app.services.ocr.layout_engine import get_layout_engine
+
+            self._layout_engine = get_layout_engine()
+        return self._layout_engine.recognize_with_layout(image_path)
+
+    def recognize_table(self, image_path: str) -> list:
+        """表格识别"""
+        if self._layout_engine is None:
+            from app.services.ocr.layout_engine import get_layout_engine
+
+            self._layout_engine = get_layout_engine()
+        return self._layout_engine.recognize_table(image_path)
 
 
 class TesseractEngine(OCREngine):
@@ -146,6 +170,9 @@ class MockOCREngine(OCREngine):
     """Mock OCR 引擎 — 用于无 OCR 依赖环境下的开发调试
 
     返回一段固定的合同文本，便于测试 M04 与 M05 的协作流程。
+
+    第三阶段增强: 实现 recognize_with_layout / recognize_table，
+    返回固定的结构化结果，便于测试 P3-3 布局分析功能。
     """
 
     _MOCK_TEXT = """采购合同
@@ -168,6 +195,22 @@ class MockOCREngine(OCREngine):
 
     def recognize_pdf(self, pdf_path: str) -> list[Tuple[int, str]]:
         return [(1, self._MOCK_TEXT)]
+
+    # ===== 第三阶段实现 — Mock 布局分析 =====
+    def recognize_with_layout(self, image_path: str) -> dict:
+        """返回 Mock 布局分析结果
+
+        复用 MockLayoutEngine 的结构化输出，便于测试 P3-3 流程
+        """
+        from app.services.ocr.layout_engine import MockLayoutEngine
+
+        return MockLayoutEngine().recognize_with_layout(image_path)
+
+    def recognize_table(self, image_path: str) -> list:
+        """返回 Mock 表格识别结果"""
+        from app.services.ocr.layout_engine import MockLayoutEngine
+
+        return MockLayoutEngine().recognize_table(image_path)
 
 
 def get_ocr_engine() -> OCREngine:

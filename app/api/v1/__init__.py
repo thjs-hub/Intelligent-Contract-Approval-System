@@ -8,13 +8,17 @@ from fastapi import APIRouter
 
 from app.api.v1.endpoints import (
     admin,
+    ai_orchestrator,
+    ai_review,
     approvals,
     attachments,
     comments,
     documents,
     health,
     logs,
+    report,
     results,
+    rule_evaluation,
     rules,
 )
 
@@ -34,3 +38,17 @@ api_router.include_router(comments.router, prefix="/comments", tags=["评论回�
 # 管理路由
 api_router.include_router(admin.router, prefix="/admin", tags=["系统管理"])
 api_router.include_router(logs.router, prefix="/logs", tags=["运行日志"])
+
+# ===== 第三阶段新增路由 — AI 审查能力 =====
+api_router.include_router(
+    ai_review.router, prefix="/ai-review", tags=["AI 智能审查"]
+)
+api_router.include_router(
+    report.router, prefix="/reports", tags=["审查报告"]
+)
+api_router.include_router(
+    rule_evaluation.router, prefix="/rule-evaluation", tags=["规则评测"]
+)
+api_router.include_router(
+    ai_orchestrator.router, prefix="/orchestrate", tags=["AI 审查编排"]
+)

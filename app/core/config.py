@@ -75,6 +75,52 @@ class Settings(BaseSettings):
     # 评论回写最大重试次数
     COMMENT_MAX_RETRY: int = 3
 
+    # ===== 第三阶段新增配置项 — AI 审查能力 =====
+    # 所有 AI 能力默认关闭，可通过 .env 渐进式开启。
+    # 关闭时自动回退到第二阶段基础行为，不破坏端到端闭环。
+
+    # --- LLM 智能审查 (P3-4) ---
+    # 是否启用 LLM 智能审查（需要配置 LLM_ENDPOINT 和 LLM_API_KEY）
+    LLM_ENABLED: bool = False
+    # LLM API 端点地址（OpenAI 兼容格式）
+    LLM_ENDPOINT: str = ""
+    # LLM API 密钥（请通过环境变量注入，不要硬编码）
+    LLM_API_KEY: str = ""
+    # 默认 LLM 模型名（如 qwen-plus / deepseek-chat / gpt-4o-mini）
+    LLM_MODEL: str = "qwen-plus"
+    # LLM 请求超时（秒）
+    LLM_TIMEOUT: int = 60
+    # LLM 单次响应最大 token 数
+    LLM_MAX_TOKENS: int = 4096
+    # LLM 采样温度（审查场景需要稳定输出，建议低温度）
+    LLM_TEMPERATURE: float = 0.1
+
+    # --- 语义匹配 (P3-2) ---
+    # 是否启用语义匹配模式（需要安装 sentence-transformers）
+    SEMANTIC_ENABLED: bool = False
+    # 语义匹配相似度阈值（≥此值视为命中，0~1，越高越严格）
+    SEMANTIC_THRESHOLD: float = 0.75
+    # 向量编码模型名（HuggingFace 模型标识符）
+    SEMANTIC_MODEL: str = "BAAI/bge-small-zh-v1.5"
+
+    # --- OCR 布局分析 (P3-3) ---
+    # 是否启用 OCR 布局分析（识别标题/段落/表格区域）
+    OCR_USE_LAYOUT: bool = False
+    # 是否启用 OCR 表格识别
+    OCR_TABLE_RECOGNITION: bool = False
+
+    # --- NLP 信息抽取 (P3-1) ---
+    # 是否启用 NLP 信息抽取增强（NER 模型）
+    NLP_EXTRACTOR_ENABLED: bool = False
+    # NLP 模型名（用于 NER，HanLP/spaCy/HuggingFace 模型标识符）
+    NLP_MODEL: str = "hfl/chinese-roberta-wwm-ext"
+
+    # --- AI 编排与报告 ---
+    # AI 审查编排总开关（关闭时仅走第二阶段规则审查流程）
+    AI_REVIEW_ENABLED: bool = False
+    # 是否启用报告 AI 增强（AI 摘要 + 风险分布）
+    AI_REPORT_ENHANCE: bool = False
+
     model_config = {"env_file": ".env", "env_file_encoding": "utf-8"}
 
 

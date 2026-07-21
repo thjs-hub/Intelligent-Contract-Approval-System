@@ -3,12 +3,13 @@
 基础版支持两种匹配模式:
   - keyword: 文本中包含任一关键词即命中
   - regex: 文本匹配任一正则即命中
-  - semantic: 第三阶段扩展点，第二阶段跳过
+  - semantic: 第三阶段实现，基于向量相似度的语义匹配
 
 每条规则匹配成功后返回 (evidence_text, evidence_position)，
 用于创建 RuleHit 记录和生成审批关注点。
 """
 
+import logging
 import re
 from typing import Optional
 
@@ -18,15 +19,35 @@ from sqlalchemy.orm import Session
 from app.models.review_rule import ReviewRule
 from app.models.rule_hit import RuleHit
 
+logger = logging.getLogger("contract_review")
+
 
 class RuleMatcher:
-    """规则匹配引擎 — 基础版（keyword + regex）"""
+    """规则匹配引擎 — 支持 keyword / regex / semantic 三种模式"""
 
     # 关键词匹配时返回的证据上下文长度（前后各 50 字符）
     _EVIDENCE_CONTEXT_LEN = 50
 
     def __init__(self, db: Session):
         self.db = db
+        # 语义匹配器延迟初始化（避免无 sentence-transformers 依赖时启动报错）
+        self._semantic_matcher = None
+        # 检查语义匹配总开关
+        from app.core.config import settings
+
+        self._semantic_enabled = getattr(settings, "SEMANTIC_ENABLED", False)
+
+    def _get_semantic_matcher(self):
+        """延迟获取语义匹配器
+
+        首次调用时实例化 SemanticMatcher。
+        若 sentence-transformers 未安装，抛 ImportError 由调用方捕获。
+        """
+        if self._semantic_matcher is None:
+            from app.services.semantic_matcher import SemanticMatcher
+
+            self._semantic_matcher = SemanticMatcher()
+        return self._semantic_matcher
 
     def match_all(
         self,
@@ -61,7 +82,9 @@ class RuleMatcher:
         focus_points: list[str] = []
 
         for rule in rules:
-            evidence, position = self._match_rule(rule, search_text)
+            evidence, position = self._match_rule(
+                rule, search_text, basic_info, clause_info
+            )
 
             if evidence:
                 # 命中 → 创建 RuleHit
@@ -80,7 +103,6 @@ class RuleMatcher:
                     focus_points.append(
                         f"【高风险】{rule.rule_name}：{rule.suggestion_text}"
                     )
-            # 注意: 基础版不记录 miss，第三阶段可扩展
 
         self.db.flush()
         return hits, focus_points
@@ -102,7 +124,7 @@ class RuleMatcher:
           - keyword 模式: match_text 按逗号分隔为多个关键词，任一命中即匹配
           - regex 模式: match_text 作为单个正则表达式处理（不按逗号分隔，
             因为正则中 {2,3} 等语法自身包含逗号）
-          - semantic 模式: 第三阶段扩展点，第二阶段跳过
+          - semantic 模式: 第三阶段实现，基于向量相似度匹配
         """
         if not rule.match_text:
             return None, None
@@ -115,10 +137,64 @@ class RuleMatcher:
             # regex 模式: 整个 match_text 作为单个正则表达式
             return self._regex_match([rule.match_text], search_text)
         elif rule.match_mode == "semantic":
-            # ===== 第三阶段扩展点 =====
-            # 第二阶段暂不支持语义匹配，跳过
-            # TODO: 第三阶段实现 SemanticMatcher 后启用
+            # ===== 第三阶段实现 — 语义匹配 =====
+            return self._semantic_match(rule, search_text)
+        return None, None
+
+    def _semantic_match(
+        self, rule: ReviewRule, search_text: str
+    ) -> tuple[Optional[str], Optional[str]]:
+        """语义匹配 — 基于 SemanticMatcher 向量相似度
+
+        保护策略:
+          - SEMANTIC_ENABLED=False 时直接跳过（不影响其他规则）
+          - sentence-transformers 未安装时跳过并记录警告
+          - 匹配过程异常时跳过（不影响整体审查流程）
+        """
+        # 总开关关闭 → 跳过
+        if not self._semantic_enabled:
             return None, None
+
+        # search_text 为空时跳过
+        if not search_text or not search_text.strip():
+            return None, None
+
+        try:
+            matcher = self._get_semantic_matcher()
+            # semantic 规则的 match_text 可能是逗号分隔的多个语义描述
+            # 任一描述命中即视为规则命中
+            descriptions = [
+                p.strip() for p in rule.match_text.split(",") if p.strip()
+            ]
+            if not descriptions:
+                return None, None
+
+            best_score: Optional[float] = None
+            best_evidence: Optional[str] = None
+
+            for desc in descriptions:
+                score, evidence = matcher.match(desc, search_text)
+                if score is not None and (
+                    best_score is None or score > best_score
+                ):
+                    best_score = score
+                    best_evidence = evidence
+
+            if best_score is not None and best_evidence:
+                return best_evidence, f"语义匹配: 相似度={best_score:.2f}"
+
+        except ImportError:
+            # sentence-transformers 未安装 → 跳过该规则，记录一次警告
+            logger.warning(
+                f"语义匹配规则 {rule.rule_code} 跳过: "
+                f"sentence-transformers 未安装"
+            )
+        except Exception as e:
+            # 其他异常 → 跳过，不影响其他规则
+            logger.warning(
+                f"语义匹配规则 {rule.rule_code} 执行异常: {e}"
+            )
+
         return None, None
 
     def _keyword_match(

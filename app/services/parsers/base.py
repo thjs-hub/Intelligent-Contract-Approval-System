@@ -120,7 +120,6 @@ class RegexTextExtractor(BaseTextExtractor):
 
     def extract_clauses(self, text: str) -> dict[str, Any]:
         """提取条款信息 — 基于关键词定位段落"""
-        import re
 
         paragraphs = text.split("\n")
         result: dict[str, Any] = {}
@@ -175,16 +174,16 @@ def get_extractor() -> BaseTextExtractor:
 
     根据 settings.EXTRACTOR_TYPE 配置返回对应的提取器:
       - "regex" (默认): 基于正则的提取器（第二阶段）
-      - "nlp": 基于 NER 的提取器（第三阶段扩展点）
+      - "nlp": 基于 NER 的提取器（第三阶段实现）
     """
     from app.core.config import settings
 
     ext_type = getattr(settings, "EXTRACTOR_TYPE", "regex")
     if ext_type == "regex":
         return RegexTextExtractor()
-    # ===== 第三阶段扩展点 =====
-    # elif ext_type == "nlp":
-    #     from app.services.parsers.nlp_extractor import NLPExtractor
-    #     return NLPExtractor()
-    # TODO: 第三阶段实现 NLP 提取器后取消上方注释
+    elif ext_type == "nlp":
+        # ===== 第三阶段实现 — 已启用 =====
+        from app.services.parsers.nlp_extractor import NLPExtractor
+
+        return NLPExtractor()
     raise ValueError(f"未知的提取器类型: {ext_type}")

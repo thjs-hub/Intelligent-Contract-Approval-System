@@ -1,6 +1,5 @@
 """M07 审查结果管理服务单元测试。"""
 
-import pytest
 
 from app.models.review_rule import ReviewRule
 from app.models.rule_hit import RuleHit

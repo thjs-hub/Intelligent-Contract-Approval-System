@@ -1,6 +1,5 @@
 """M09 任务日志服务单元测试。"""
 
-import pytest
 
 from app.models.task import ApprovalTask
 from app.services.task_log_service import (

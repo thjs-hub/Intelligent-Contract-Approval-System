@@ -1,7 +1,5 @@
 """M03 唯一性去重服务单元测试。"""
 
-import pytest
-
 from app.models.task import ApprovalTask
 from app.services.dedup_service import DedupService
 
