@@ -1,20 +1,36 @@
 """应用配置 —— 通过 Pydantic Settings 从 .env 读取。
 
+加载优先级（由低到高）：
+  1. config.py 中的字段默认值
+  2. .env 文件中的值（通过 model_config.env_file 指定）
+  3. 操作系统环境变量（最高优先级）
+
 第二阶段新增配置项：
   - APPROVAL_ADAPTER: 审批系统适配器类型，默认 "mock"（第三阶段可切换为 dingtalk/feishu/wecom）
   - OCR_ENGINE: OCR 引擎类型，默认 "paddle"（可选 "tesseract"）
   - EXTRACTOR_TYPE: 文档解析提取器类型，默认 "regex"（第三阶段可切换为 "nlp"）
 """
 
+from pathlib import Path
+
 from pydantic_settings import BaseSettings
+
+# .env 文件位于 config.py 的上上级目录（packages/backend/.env）
+_ENV_FILE = Path(__file__).resolve().parent.parent.parent / ".env"
 
 
 class Settings(BaseSettings):
-    # 应用
+    # ===== 应用 =====
     APP_NAME: str = "ContractReviewSystem"
     APP_ENV: str = "development"
     DEBUG: bool = True
     LOG_LEVEL: str = "INFO"
+
+    # ===== 安全 =====
+    # JWT 签名密钥（生产环境务必替换为强随机字符串）
+    SECRET_KEY: str = "change-me-in-production"
+    # JWT 令牌过期时间（分钟）
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
 
     # 服务
     SERVER_HOST: str = "0.0.0.0"
@@ -121,7 +137,12 @@ class Settings(BaseSettings):
     # 是否启用报告 AI 增强（AI 摘要 + 风险分布）
     AI_REPORT_ENHANCE: bool = False
 
-    model_config = {"env_file": ".env", "env_file_encoding": "utf-8"}
+    model_config = {
+        "env_file": str(_ENV_FILE),
+        "env_file_encoding": "utf-8",
+        # 环境变量优先级高于 .env 文件（Pydantic Settings 默认行为）
+        "env_prefix": "",
+    }
 
 
 settings = Settings()

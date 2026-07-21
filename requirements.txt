@@ -29,6 +29,9 @@ aiofiles>=24.1.0
 # DOCX 文档解析（M04）
 python-docx>=1.1.2
 
+# 表单/文件上传支持（FastAPI UploadFile）
+python-multipart>=0.0.18
+
 # PDF 文档解析（M04，文本型 PDF）
 pdfplumber>=0.11.4
 

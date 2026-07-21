@@ -69,12 +69,26 @@ class RegexTextExtractor(BaseTextExtractor):
     PATTERNS = {
         "contract_title": r"^(.+合同|.+协议|.+订单).*$",
         "contract_number": r"合同编号[：:]\s*([^\n]+)",
-        "party_a": r"甲方[：:]\s*([^\n]+)",
-        "party_b": r"乙方[：:]\s*([^\n]+)",
-        "contract_amount": r"(?:合同金额|总金额|价款)[：:]\s*(?:人民币)?\s*([^\n]+)",
+        # 甲方/乙方: 允许标签与冒号之间存在括号角色说明，如 "甲方（委托方）：..."
+        "party_a": r"甲方(?:[（(][^)）]+[)）])?[：:]\s*([^\n]+)",
+        "party_b": r"乙方(?:[（(][^)）]+[)）])?[：:]\s*([^\n]+)",
+        # 合同金额: 增加 "服务费" 等常见变体标签
+        "contract_amount": r"(?:合同金额|总金额|价款|服务费|合同价款|合同总价)[：:]\s*(?:人民币)?\s*([^\n]+)",
         "currency": r"(?:币种|使用货币)[：:]\s*([^\n]+)",
-        "effective_date": r"(?:生效日期|生效时间|自)\s*(\d{4}[-年]\d{1,2}[-月]\d{1,2}[日]?)",
-        "expiry_date": r"(?:到期日|有效期至|终止日期)[：:]\s*(\d{4}[-年]\d{1,2}[-月]\d{1,2}[日]?)",
+        # 生效日期: 允许日期数字之间存在空格 (如 "2026 年 8 月 1 日")，标签后冒号可选
+        # 同时支持 "自 ... 起" 句式，\s* 放在 [日]? 之前确保日字能正确匹配
+        "effective_date": (
+            r"(?:生效日期|生效时间|开始日期)[：:]?\s*"
+            r"(\d{4}\s*[年\-]\s*\d{1,2}\s*[月\-]\s*\d{1,2}\s*[日]?)"
+            r"|自\s*(\d{4}\s*[年\-]\s*\d{1,2}\s*[月\-]\s*\d{1,2}\s*[日]?)\s*起"
+        ),
+        # 到期日期: 允许日期数字之间存在空格，标签后冒号可选
+        # 同时支持 "至 ... 止" 句式，\s* 放在 [日]? 之前确保日字能正确匹配
+        "expiry_date": (
+            r"(?:到期日|有效期至|终止日期|截止日期)[：:]?\s*"
+            r"(\d{4}\s*[年\-]\s*\d{1,2}\s*[月\-]\s*\d{1,2}\s*[日]?)"
+            r"|至\s*(\d{4}\s*[年\-]\s*\d{1,2}\s*[月\-]\s*\d{1,2}\s*[日]?)\s*止"
+        ),
     }
 
     # ===== 条款关键词 =====
@@ -91,17 +105,26 @@ class RegexTextExtractor(BaseTextExtractor):
 
     def extract_basic_info(self, text: str) -> dict[str, Any]:
         """提取基本信息 — 每个字段独立正则匹配"""
+        import re as _re
+
         result: dict[str, Any] = {}
         for field, pattern in self.PATTERNS.items():
             # 使用 MULTILINE 让 ^ $ 匹配每行
-            match = __import__("re").search(pattern, text, __import__("re").MULTILINE)
+            match = _re.search(pattern, text, _re.MULTILINE)
             if match:
-                # 优先取捕获组，无捕获组则取整个匹配
-                value = (
-                    match.group(1).strip()
-                    if match.lastindex
-                    else match.group(0).strip()
-                )
+                if match.lastindex:
+                    # 多捕获组时取第一个非 None 的组值
+                    value = None
+                    for i in range(1, match.lastindex + 1):
+                        g = match.group(i)
+                        if g is not None:
+                            value = g.strip()
+                            break
+                    if value is None:
+                        value = match.group(0).strip()
+                else:
+                    # 无捕获组则取整个匹配
+                    value = match.group(0).strip()
                 result[field] = {
                     "value": value,
                     "source_text": match.group(0).strip()[:500],
@@ -116,6 +139,32 @@ class RegexTextExtractor(BaseTextExtractor):
                     "extracted": False,
                     "reason": f"未匹配到 {field} 对应模式",
                 }
+
+        # 币种推断降级: 未直接匹配时从金额字段推断
+        if not result.get("currency", {}).get("extracted"):
+            amount_src = result.get("contract_amount", {}).get("source_text", "") or ""
+            if "人民币" in amount_src or "CNY" in amount_src or "￥" in amount_src or "¥" in amount_src:
+                result["currency"] = {
+                    "value": "CNY",
+                    "source_text": amount_src[:200],
+                    "position": "从金额推断",
+                    "extracted": True,
+                }
+            elif "美元" in amount_src or "USD" in amount_src or "$" in amount_src:
+                result["currency"] = {
+                    "value": "USD",
+                    "source_text": amount_src[:200],
+                    "position": "从金额推断",
+                    "extracted": True,
+                }
+            elif "欧元" in amount_src or "EUR" in amount_src or "€" in amount_src:
+                result["currency"] = {
+                    "value": "EUR",
+                    "source_text": amount_src[:200],
+                    "position": "从金额推断",
+                    "extracted": True,
+                }
+
         return result
 
     def extract_clauses(self, text: str) -> dict[str, Any]:
